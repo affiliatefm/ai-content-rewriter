@@ -1,0 +1,57 @@
+{
+  "name": "@affiliate.fm/ai-content-rewriter",
+  "version": "0.1.0",
+  "description": "AI-powered content rewriting library. Supports multiple providers, format auto-detection, and configurable prompts.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./browser": {
+      "types": "./lib/browser.d.ts",
+      "import": "./lib/browser.js"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "rewrite",
+    "content",
+    "openai",
+    "gpt",
+    "copywriting",
+    "seo",
+    "affiliate",
+    "marketing"
+  ],
+  "author": "Affiliate.FM",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/affiliatefm/ai-content-rewriter.git"
+  },
+  "homepage": "https://affiliate.fm/tools/ai-content-rewriter/",
+  "bugs": {
+    "url": "https://github.com/affiliatefm/ai-content-rewriter/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "openai": "^4.73.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  }
+}
