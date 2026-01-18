@@ -82,7 +82,7 @@ function getClient(config: ProviderConfig): OpenAI {
 // COST CALCULATION
 // =============================================================================
 
-function calculateCost(
+export function calculateCost(
   model: string,
   inputTokens: number,
   outputTokens: number
@@ -92,6 +92,22 @@ function calculateCost(
     (inputTokens / 1_000_000) * pricing.input +
     (outputTokens / 1_000_000) * pricing.output
   );
+}
+
+/**
+ * Estimate cost before running rewrite.
+ * Assumes output ~1.2x input length.
+ */
+export function estimateCost(
+  model: string,
+  contentLength: number,
+  variants: number = 1
+): number {
+  // ~3.5 chars per token
+  const inputTokens = Math.ceil(contentLength / 3.5);
+  // Assume output ~1.2x input
+  const outputTokens = Math.ceil(inputTokens * 1.2);
+  return calculateCost(model, inputTokens, outputTokens) * variants;
 }
 
 // =============================================================================

@@ -13,72 +13,75 @@ npm install @affiliate.fm/ai-content-rewriter
 ## Quick Start
 
 ```typescript
-import { rewrite } from "@affiliate.fm/ai-content-rewriter";
+import { ContentRewriter } from "@affiliate.fm/ai-content-rewriter";
 
-const results = await rewrite(
-  {
-    content: "<h1>Original Title</h1><p>Original content here...</p>",
-    title: "Original Title", // Optional, auto-detected from content
-    description: "Meta description", // Optional
-  },
-  {
-    provider: {
-      type: "openai",
-      apiKey: process.env.OPENAI_API_KEY,
-      model: "gpt-4.1", // Optional, defaults to gpt-4.1
-    },
-    variantCount: 3, // Generate 3 variants
-  }
-);
+// Create rewriter instance
+const rewriter = new ContentRewriter({
+  provider: "openai",
+  apiKey: process.env.OPENAI_API_KEY,
+  model: "gpt-4.1", // Optional, defaults to gpt-4.1
+});
 
-console.log(results[0].content); // Rewritten HTML
-console.log(results[0].title); // Rewritten title
-console.log(results[0].cost); // Cost in USD
+// Rewrite content (single variant)
+const [result] = await rewriter.rewrite("<h1>Original Title</h1><p>Original content...</p>");
+
+console.log(result.content);     // Rewritten HTML
+console.log(result.title);       // Rewritten title
+console.log(result.description); // Rewritten description
+console.log(result.cost);        // Cost in USD
+
+// Generate multiple variants
+const results = await rewriter.rewrite(htmlContent, { variants: 5 });
 ```
 
-## Class-Based Usage
+## Class API (Recommended)
 
 ```typescript
 import { ContentRewriter } from "@affiliate.fm/ai-content-rewriter";
 
 const rewriter = new ContentRewriter({
-  defaultProvider: {
-    type: "openai",
-    model: "gpt-4.1",
-  },
+  provider: "openai",
+  apiKey: "sk-...",
+  model: "gpt-4.1",         // Optional
+  temperature: 0.9,          // Optional, default: 0.9
 });
 
-const results = await rewriter.rewrite(
-  { content: htmlContent },
-  {
-    provider: { type: "openai", apiKey: "sk-..." },
-    promptTemplate: "SEO_FOCUSED",
-    variantCount: 5,
-    onProgress: (progress) => {
-      console.log(`${progress.currentVariant}/${progress.totalVariants}`);
-    },
-  }
-);
+// Simple rewrite
+const [result] = await rewriter.rewrite(html);
+
+// With options
+const results = await rewriter.rewrite(html, {
+  variants: 3,
+  promptTemplate: "SEO_FOCUSED",
+  temperature: 0.8,            // Override default
+  onProgress: (p) => console.log(`${p.currentVariant}/${p.totalVariants}`),
+});
+
+// Single result shorthand
+const result = await rewriter.rewriteOne(html);
+
+// Get available prompt templates
+const templates = rewriter.getPromptTemplates();
 ```
 
 ## Features
 
 ### Format Auto-Detection
 
-The library automatically detects content format (HTML, Markdown, or plain text) and processes accordingly:
+Automatically detects content format (HTML, Markdown, or plain text):
 
 ```typescript
 // HTML - detected automatically
-const htmlResult = await rewrite({ content: "<h1>Title</h1><p>Content</p>" }, options);
+const [result] = await rewriter.rewrite("<h1>Title</h1><p>Content</p>");
 
 // Markdown - detected automatically
-const mdResult = await rewrite({ content: "# Title\n\nContent here" }, options);
+const [result] = await rewriter.rewrite("# Title\n\nContent here");
 
 // Plain text - detected automatically
-const textResult = await rewrite({ content: "Just plain text content" }, options);
+const [result] = await rewriter.rewrite("Just plain text content");
 
 // Or specify explicitly
-const result = await rewrite({ content: "...", format: "html" }, options);
+const [result] = await rewriter.rewrite({ content: "...", format: "html" });
 ```
 
 ### Built-in Prompt Templates
@@ -91,16 +94,13 @@ import { PROMPTS } from "@affiliate.fm/ai-content-rewriter";
 // - SEO_FOCUSED - Optimized for search engines
 // - CASUAL_TONE - Conversational, friendly style
 // - FORMAL_PROFESSIONAL - Business/professional tone
-// - CUSTOM - Use your own prompt
 
-const results = await rewrite(content, {
-  provider: { type: "openai", apiKey: "..." },
+const results = await rewriter.rewrite(html, {
   promptTemplate: "SEO_FOCUSED",
 });
 
 // Or use a custom prompt
-const results = await rewrite(content, {
-  provider: { type: "openai", apiKey: "..." },
+const results = await rewriter.rewrite(html, {
   prompt: "Your custom rewriting instructions here...",
 });
 ```
@@ -108,9 +108,8 @@ const results = await rewrite(content, {
 ### Progress Tracking
 
 ```typescript
-const results = await rewrite(content, {
-  provider: { type: "openai", apiKey: "..." },
-  variantCount: 5,
+const results = await rewriter.rewrite(content, {
+  variants: 5,
   onProgress: (progress) => {
     console.log(progress.phase); // 'preparing' | 'generating' | 'processing' | 'done'
     console.log(`Variant ${progress.currentVariant}/${progress.totalVariants}`);
@@ -132,18 +131,13 @@ Content over 12,000 characters is automatically split into chunks and processed 
 ```typescript
 const largeArticle = await fetchLargeArticle();
 
-const results = await rewrite(
-  { content: largeArticle },
-  {
-    provider: { type: "openai", apiKey: "..." },
-    onProgress: (progress) => {
-      // Track chunk progress for large content
-      if (progress.totalChunks) {
-        console.log(`Processing chunk ${progress.currentChunk}/${progress.totalChunks}`);
-      }
-    },
-  }
-);
+const results = await rewriter.rewrite(largeArticle, {
+  onProgress: (progress) => {
+    if (progress.totalChunks) {
+      console.log(`Processing chunk ${progress.currentChunk}/${progress.totalChunks}`);
+    }
+  },
+});
 ```
 
 ### Cancellation
@@ -152,8 +146,7 @@ const results = await rewrite(
 const controller = new AbortController();
 
 // Start rewrite
-const promise = rewrite(content, {
-  provider: { type: "openai", apiKey: "..." },
+const promise = rewriter.rewrite(content, {
   signal: controller.signal,
 });
 
@@ -167,11 +160,10 @@ By default, the library automatically masks common AI-generated patterns to make
 
 ```typescript
 // Masking is enabled by default
-const results = await rewrite(content, options);
+const results = await rewriter.rewrite(content);
 
 // Disable masking if needed
-const results = await rewrite(content, {
-  ...options,
+const results = await rewriter.rewrite(content, {
   maskAIPatterns: false,
 });
 
@@ -190,78 +182,125 @@ const humanizedHtml = maskAIPatternsInHTML(aiGeneratedHtml);
 - Overly structured patterns (numbered conclusions, "Firstly, Secondly...")
 - Optional: contractions for more natural flow
 
+### Uniqueness Checking
+
+```typescript
+import { checkUniqueness } from "@affiliate.fm/ai-content-rewriter";
+
+const result = checkUniqueness(originalHtml, rewrittenHtml);
+
+console.log(`${result.uniqueness}% unique`);  // e.g., "92% unique"
+console.log(`${result.similarity}% similar`); // e.g., "8% similar"
+
+if (result.isLowUniqueness) {
+  console.warn('Content uniqueness is below 85%');
+}
+```
+
+### Cost Estimation
+
+```typescript
+import { estimateCost } from "@affiliate.fm/ai-content-rewriter";
+
+// Estimate before running
+const estimatedCost = estimateCost("gpt-4.1", htmlContent.length, 3); // 3 variants
+console.log(`Estimated cost: $${estimatedCost.toFixed(4)}`);
+```
+
 ## API Reference
-
-### `rewrite(input, options)`
-
-Main function for rewriting content.
-
-**Parameters:**
-- `input`: `ContentInput | string` - Content to rewrite
-- `options`: `RewriteOptions` - Rewrite configuration
-
-**Returns:** `Promise<RewriteResult[]>`
-
-### `rewriteOne(input, options)`
-
-Convenience function that returns a single result.
-
-**Returns:** `Promise<RewriteResult>`
 
 ### `ContentRewriter` Class
 
-For reusable configuration:
-
 ```typescript
-const rewriter = new ContentRewriter(config);
+const rewriter = new ContentRewriter({
+  provider: "openai",        // Required: "openai" | "anthropic" | "custom"
+  apiKey: "sk-...",          // Required
+  model: "gpt-4.1",          // Optional, default: "gpt-4.1"
+  baseUrl: "...",            // Optional, for proxies
+  temperature: 0.9,          // Optional, default: 0.9
+  customPrompts: { ... },    // Optional, add custom templates
+});
+
+// Main method
 const results = await rewriter.rewrite(input, options);
+
+// Single result shorthand  
+const result = await rewriter.rewriteOne(input, options);
+
+// Get prompt templates
 const templates = rewriter.getPromptTemplates();
+
+// Get provider info
+const provider = rewriter.getProvider();
 ```
 
-## Types
+### Rewrite Options (per-call)
 
 ```typescript
-interface ContentInput {
-  content: string;
-  title?: string;
-  description?: string;
-  format?: "html" | "markdown" | "text";
-}
-
-interface RewriteOptions {
-  provider: ProviderConfig;
-  prompt?: string;
-  promptTemplate?: string;
-  variantCount?: number; // 1-30, default: 1
-  temperature?: number; // 0-2, default: 0.9
-  maskAIPatterns?: boolean; // default: true
+interface RewriteCallOptions {
+  variants?: number;         // 1-30, default: 1
+  prompt?: string;           // Custom prompt
+  promptTemplate?: string;   // Template key
+  temperature?: number;      // 0-2, override constructor default
+  maskAIPatterns?: boolean;  // default: true
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }
+```
 
+### Content Input
+
+```typescript
+// String shorthand
+await rewriter.rewrite("<h1>Title</h1><p>Content</p>");
+
+// Object with metadata
+await rewriter.rewrite({
+  content: "<h1>Title</h1><p>Content</p>",
+  title: "Optional explicit title",
+  description: "Optional meta description",
+  format: "html", // Optional: "html" | "markdown" | "text"
+});
+```
+
+### Rewrite Result
+
+```typescript
 interface RewriteResult {
-  content: string;
-  title: string;
-  description: string;
-  cost?: number;
-  format: ContentFormat;
+  content: string;           // Rewritten content
+  title: string;             // Rewritten title
+  description: string;       // Rewritten description
+  cost?: number;             // Cost in USD
+  format: ContentFormat;     // Detected/specified format
 }
+```
 
-interface ProviderConfig {
-  type: "openai" | "anthropic" | "custom";
-  apiKey: string;
-  model?: string;
-  baseUrl?: string;
-}
+## Legacy API (Deprecated)
+
+The function-based API still works but is deprecated:
+
+```typescript
+import { rewrite } from "@affiliate.fm/ai-content-rewriter";
+
+// Still works, but prefer ContentRewriter class
+const results = await rewrite(content, {
+  provider: { type: "openai", apiKey: "sk-...", model: "gpt-4.1" },
+  variantCount: 3,
+});
 ```
 
 ## Error Handling
 
 ```typescript
-import { RewriterError, ProviderError, RateLimitError, ValidationError } from "@affiliate.fm/ai-content-rewriter";
+import { 
+  RewriterError, 
+  ProviderError, 
+  RateLimitError, 
+  ValidationError 
+} from "@affiliate.fm/ai-content-rewriter";
 
 try {
-  const results = await rewrite(content, options);
+  const results = await rewriter.rewrite(content);
 } catch (error) {
   if (error instanceof RateLimitError) {
     console.log(`Rate limited. Retry after ${error.retryAfter}s`);
@@ -278,10 +317,14 @@ try {
 The library works in browsers with the OpenAI SDK's browser mode:
 
 ```typescript
-import { rewrite } from "@affiliate.fm/ai-content-rewriter/browser";
+import { ContentRewriter } from "@affiliate.fm/ai-content-rewriter/browser";
 
-// Same API, optimized for browsers
-const results = await rewrite(content, options);
+const rewriter = new ContentRewriter({
+  provider: "openai",
+  apiKey: "sk-...",
+});
+
+const results = await rewriter.rewrite(content);
 ```
 
 ## Pricing
@@ -290,7 +333,7 @@ Cost is calculated based on OpenAI's token pricing:
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) |
 |-------|----------------------|------------------------|
-| gpt-4.1 | $2.00 | $8.00 |
+| gpt-4.1 | $5.00 | $15.00 |
 | gpt-4.1-mini | $0.40 | $1.60 |
 | gpt-4o | $2.50 | $10.00 |
 | gpt-4o-mini | $0.15 | $0.60 |

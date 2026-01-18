@@ -5,41 +5,50 @@
  *
  * @example
  * ```typescript
- * import { rewrite, ContentRewriter } from "@affiliate.fm/ai-content-rewriter";
+ * import { ContentRewriter } from "@affiliate.fm/ai-content-rewriter";
  *
- * // Quick usage
- * const results = await rewrite(
- *   { content: "<h1>Hello</h1><p>World</p>" },
- *   {
- *     provider: { type: "openai", apiKey: "sk-..." },
- *     variantCount: 3,
- *   }
- * );
- *
- * // Class-based usage with config
+ * // Create rewriter instance (recommended)
  * const rewriter = new ContentRewriter({
- *   defaultProvider: { type: "openai", model: "gpt-4.1" },
+ *   provider: "openai",
+ *   apiKey: "sk-...",
+ *   model: "gpt-4.1",
  * });
- * const results = await rewriter.rewrite(content, options);
+ *
+ * // Rewrite content
+ * const [result] = await rewriter.rewrite("<h1>Hello</h1><p>World</p>");
+ * console.log(result.content);
+ *
+ * // Multiple variants
+ * const results = await rewriter.rewrite(html, { variants: 3 });
  * ```
  */
 
-// Main exports
-export { ContentRewriter, rewrite, rewriteOne } from "./rewriter.js";
+// Main class export
+export { ContentRewriter } from "./rewriter.js";
+
+// Legacy convenience functions (deprecated but supported)
+export { rewrite, rewriteOne, createRewriter } from "./rewriter.js";
 
 // Types
 export type {
+  // New API types
+  RewriterOptions,
+  RewriteCallOptions,
+  // Content types
   ContentInput,
   ContentFormat,
   RewriteResult,
-  RewriteOptions,
-  RewriterConfig,
+  // Provider types
   ProviderConfig,
   ProviderType,
+  // Progress types
   RewriteProgress,
   ProgressCallback,
   StreamingResult,
   StreamingCallback,
+  // Legacy types (deprecated)
+  RewriteOptions,
+  RewriterConfig,
 } from "./types.js";
 
 // Errors
@@ -71,9 +80,14 @@ export {
   estimateTokens,
   splitIntoChunks,
   parseAiResponse,
+  checkUniqueness,
+  type UniquenessResult,
 } from "./utils.js";
 
-// Providers (for direct access)
+// Cost estimation
+export { estimateCost, calculateCost } from "./providers/openai.js";
+
+// Providers (for direct access - advanced)
 export {
   rewriteWithOpenAI,
   rewriteLargeContentWithOpenAI,

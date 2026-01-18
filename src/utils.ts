@@ -359,6 +359,120 @@ export function parseAiResponse(raw: string): ParsedResponse {
 }
 
 // =============================================================================
+// UNIQUENESS CALCULATION
+// =============================================================================
+
+// Stop words for multiple languages (filtered from uniqueness calculation)
+const STOP_WORDS = new Set([
+  // English
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+  'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
+  'to', 'was', 'will', 'with', 'this', 'but', 'they', 'have',
+  'had', 'what', 'when', 'where', 'who', 'which', 'why', 'how',
+  'all', 'would', 'there', 'their', 'been', 'if', 'more', 'can',
+  'her', 'him', 'she', 'my', 'than', 'then', 'them', 'these',
+  'so', 'some', 'up', 'out', 'about', 'into', 'just', 'not', 'no',
+  // Russian
+  'и', 'в', 'не', 'на', 'я', 'что', 'он', 'с', 'как', 'а', 'то', 'это',
+  'по', 'к', 'но', 'его', 'все', 'она', 'так', 'о', 'из', 'у', 'же',
+  'ты', 'за', 'бы', 'от', 'мы', 'до', 'вы', 'ли', 'если', 'уже',
+  'или', 'ни', 'да', 'во', 'под', 'нет', 'только', 'ее', 'мне', 'было',
+]);
+
+export interface UniquenessResult {
+  /** Uniqueness percentage (0-100) */
+  uniqueness: number;
+  /** Similarity percentage (0-100) */
+  similarity: number;
+  /** Whether uniqueness is considered low (<85%) */
+  isLowUniqueness: boolean;
+}
+
+/**
+ * Preprocess text for uniqueness calculation.
+ */
+function preprocessText(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(w => w.length > 0 && !STOP_WORDS.has(w));
+}
+
+/**
+ * Create 3-word shingles from word list.
+ */
+function createShingles(words: string[]): Set<string> {
+  const shingles = new Set<string>();
+  if (words.length < 3) {
+    if (words.length > 0) shingles.add(words.join(' '));
+    return shingles;
+  }
+  for (let i = 0; i <= words.length - 3; i++) {
+    shingles.add(words.slice(i, i + 3).join(' '));
+  }
+  return shingles;
+}
+
+/**
+ * Calculate Jaccard coefficient between two sets.
+ */
+function jaccardCoefficient(set1: Set<string>, set2: Set<string>): number {
+  if (set1.size === 0 && set2.size === 0) return 0;
+  if (set1.size === 0 || set2.size === 0) return 1;
+  
+  let intersection = 0;
+  for (const s of set1) {
+    if (set2.has(s)) intersection++;
+  }
+  const union = set1.size + set2.size - intersection;
+  return intersection / union;
+}
+
+/**
+ * Check uniqueness of rewritten content compared to original.
+ * Uses 3-word shingles and Jaccard coefficient (eTXT-style algorithm).
+ * 
+ * @param original - Original content
+ * @param rewritten - Rewritten content
+ * @returns Uniqueness result with percentage and flags
+ * 
+ * @example
+ * ```typescript
+ * const result = checkUniqueness(originalHtml, rewrittenHtml);
+ * console.log(`${result.uniqueness}% unique`);
+ * if (result.isLowUniqueness) {
+ *   console.warn('Consider rewriting again');
+ * }
+ * ```
+ */
+export function checkUniqueness(original: string, rewritten: string): UniquenessResult {
+  if (!original || !rewritten) {
+    return { uniqueness: 0, similarity: 100, isLowUniqueness: true };
+  }
+  
+  const originalWords = preprocessText(original);
+  const rewriteWords = preprocessText(rewritten);
+  const originalShingles = createShingles(originalWords);
+  const rewriteShingles = createShingles(rewriteWords);
+  
+  const similarity = jaccardCoefficient(originalShingles, rewriteShingles);
+  const uniqueness = 1 - similarity;
+  
+  const uniquenessPercent = Math.round(uniqueness * 100);
+  const similarityPercent = Math.round(similarity * 100);
+  
+  return {
+    uniqueness: uniquenessPercent,
+    similarity: similarityPercent,
+    isLowUniqueness: uniquenessPercent < 85,
+  };
+}
+
+// =============================================================================
 // ASYNC UTILITIES
 // =============================================================================
 

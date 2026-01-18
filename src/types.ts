@@ -40,12 +40,16 @@ export interface RewriteResult {
 
 export type ProviderType = "openai" | "anthropic" | "custom";
 
+/**
+ * Provider configuration for constructor.
+ * API key and type are required, model has a default.
+ */
 export interface ProviderConfig {
   /** Provider type */
   type: ProviderType;
   /** API key for the provider */
   apiKey: string;
-  /** Model to use (e.g., "gpt-4.1", "claude-3-opus") */
+  /** Model to use (e.g., "gpt-4.1", "claude-3-opus"). Default: "gpt-4.1" */
   model?: string;
   /** Base URL for custom providers or proxies */
   baseUrl?: string;
@@ -54,9 +58,56 @@ export interface ProviderConfig {
 }
 
 // =============================================================================
-// REWRITE OPTIONS
+// CONSTRUCTOR OPTIONS
 // =============================================================================
 
+/**
+ * Options passed to ContentRewriter constructor.
+ * Provider config is required here, not in each rewrite call.
+ */
+export interface RewriterOptions {
+  /** Provider type: "openai", "anthropic", or "custom" */
+  provider: ProviderType;
+  /** API key for the provider */
+  apiKey: string;
+  /** Model to use (default: "gpt-4.1") */
+  model?: string;
+  /** Base URL for custom providers or proxies */
+  baseUrl?: string;
+  /** Default temperature for generation (0-2, default: 0.9) */
+  temperature?: number;
+  /** Custom prompt templates to add */
+  customPrompts?: Record<string, string | { name: string; prompt: string }>;
+}
+
+// =============================================================================
+// REWRITE OPTIONS (per-call)
+// =============================================================================
+
+/**
+ * Options for individual rewrite() calls.
+ * Provider is NOT here - it's in constructor.
+ */
+export interface RewriteCallOptions {
+  /** Custom prompt (uses built-in if not specified) */
+  prompt?: string;
+  /** Prompt template key from built-in templates */
+  promptTemplate?: string;
+  /** Number of variants to generate (default: 1) */
+  variants?: number;
+  /** Temperature for this specific call (overrides constructor default) */
+  temperature?: number;
+  /** Progress callback for tracking generation */
+  onProgress?: ProgressCallback;
+  /** Abort signal for cancellation */
+  signal?: AbortSignal;
+  /** Apply AI pattern masking to results (default: true) */
+  maskAIPatterns?: boolean;
+}
+
+/**
+ * @deprecated Use RewriteCallOptions instead. This is kept for backward compatibility.
+ */
 export interface RewriteOptions {
   /** Provider configuration */
   provider: ProviderConfig;
@@ -115,9 +166,12 @@ export interface StreamingResult {
 export type StreamingCallback = (result: StreamingResult) => void;
 
 // =============================================================================
-// CONFIGURATION
+// LEGACY CONFIG (deprecated)
 // =============================================================================
 
+/**
+ * @deprecated Use RewriterOptions in constructor instead.
+ */
 export interface RewriterConfig {
   /** Default provider configuration */
   defaultProvider?: Partial<ProviderConfig>;
