@@ -123,11 +123,20 @@ export async function rewriteWithOpenAI(
   const temperature = options.temperature ?? DEFAULTS.TEMPERATURE;
   const maxTokens = options.maxTokens ?? DEFAULTS.MAX_TOKENS;
 
-  // Build user message - just the content to rewrite
-  const userMessage = `Current content:
+  // Build user message with title, description, and content
+  const titleSection = options.title ? `Title: ${options.title}\n\n` : "";
+  const descSection = options.description ? `Description: ${options.description}\n\n` : "";
+  
+  const userMessage = `${titleSection}${descSection}Content:
 ${options.content}
 
-Instructions: Rewrite the above content completely while preserving the meaning and HTML structure. Generate an improved version:`;
+Instructions: 
+1. Rewrite ALL parts completely - title, description, AND content
+2. Return in this exact format:
+TITLE: [rewritten title here]
+DESCRIPTION: [rewritten description here]
+CONTENT:
+[rewritten HTML content here]`;
 
   try {
     const response = await client.chat.completions.create(
@@ -150,8 +159,36 @@ Instructions: Rewrite the above content completely while preserving the meaning 
     const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0 };
     const cost = calculateCost(model, usage.prompt_tokens, usage.completion_tokens);
 
-    // Clean up the response - remove markdown code blocks if present
-    let html = raw
+    // Parse structured response (TITLE:, DESCRIPTION:, CONTENT:)
+    let title = "";
+    let description = "";
+    let html = "";
+
+    // Try to extract structured format
+    const titleMatch = raw.match(/^TITLE:\s*(.+?)(?=\nDESCRIPTION:|\nCONTENT:|\n\n)/is);
+    const descMatch = raw.match(/DESCRIPTION:\s*(.+?)(?=\nCONTENT:|\n\n)/is);
+    const contentMatch = raw.match(/CONTENT:\s*([\s\S]+)$/i);
+
+    if (titleMatch) {
+      title = titleMatch[1].trim();
+    }
+    if (descMatch) {
+      description = descMatch[1].trim();
+    }
+    if (contentMatch) {
+      html = contentMatch[1].trim();
+    }
+
+    // Fallback: if no structured format, treat entire response as HTML
+    if (!html) {
+      html = raw
+        .replace(/^```html?\n?/i, "")
+        .replace(/\n?```$/i, "")
+        .trim();
+    }
+
+    // Remove markdown code blocks from HTML
+    html = html
       .replace(/^```html?\n?/i, "")
       .replace(/\n?```$/i, "")
       .trim();
@@ -160,24 +197,24 @@ Instructions: Rewrite the above content completely while preserving the meaning 
     html = normalizeArticleContent(html);
     html = clampString(html, 0, LIMITS.HTML_MAX);
 
-    // Extract title from H1 in the rewritten HTML
-    const titleMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-    let title = "";
-    if (titleMatch) {
-      const div = { innerHTML: "" };
-      // Simple HTML tag stripping
-      title = titleMatch[1].replace(/<[^>]+>/g, "").trim();
+    // Fallback: extract title from H1 if not found
+    if (!title) {
+      const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+      if (h1Match) {
+        title = h1Match[1].replace(/<[^>]+>/g, "").trim();
+      }
     }
     if (!title) {
       title = options.title || "";
     }
     title = clampString(title, LIMITS.TITLE_MIN, LIMITS.TITLE_MAX);
 
-    // Generate description from first paragraph text
-    let description = "";
-    const pMatch = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
-    if (pMatch) {
-      description = pMatch[1].replace(/<[^>]+>/g, "").trim().slice(0, LIMITS.DESCRIPTION_MAX);
+    // Fallback: extract description from first paragraph if not found
+    if (!description) {
+      const pMatch = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+      if (pMatch) {
+        description = pMatch[1].replace(/<[^>]+>/g, "").trim().slice(0, LIMITS.DESCRIPTION_MAX);
+      }
     }
     if (!description) {
       description = options.description || "";
@@ -214,6 +251,64 @@ Instructions: Rewrite the above content completely while preserving the meaning 
 }
 
 // =============================================================================
+// META REWRITE (TITLE & DESCRIPTION)
+// =============================================================================
+
+async function rewriteMetaWithOpenAI(
+  config: ProviderConfig,
+  title: string,
+  description: string,
+  prompt: string,
+  signal?: AbortSignal
+): Promise<{ title: string; description: string; cost: number }> {
+  const client = getClient(config);
+  const model = config.model || DEFAULTS.MODEL;
+
+  const userMessage = `Original Title: ${title}
+Original Description: ${description}
+
+Instructions: Rewrite BOTH the title and description completely while preserving meaning and SEO value.
+Return in this exact format:
+TITLE: [rewritten title]
+DESCRIPTION: [rewritten description]`;
+
+  try {
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: userMessage },
+        ],
+        temperature: DEFAULTS.TEMPERATURE,
+        max_tokens: DEFAULTS.MAX_TOKENS_META,
+        top_p: DEFAULTS.TOP_P,
+        frequency_penalty: DEFAULTS.FREQUENCY_PENALTY,
+        presence_penalty: DEFAULTS.PRESENCE_PENALTY,
+      },
+      { signal }
+    );
+
+    const raw = response.choices[0]?.message?.content || "";
+    const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0 };
+    const cost = calculateCost(model, usage.prompt_tokens, usage.completion_tokens);
+
+    // Parse response
+    const titleMatch = raw.match(/TITLE:\s*(.+?)(?=\nDESCRIPTION:|\n\n|$)/is);
+    const descMatch = raw.match(/DESCRIPTION:\s*(.+?)$/is);
+
+    return {
+      title: titleMatch ? titleMatch[1].trim() : title,
+      description: descMatch ? descMatch[1].trim() : description,
+      cost,
+    };
+  } catch {
+    // Fallback to original if meta rewrite fails
+    return { title, description, cost: 0 };
+  }
+}
+
+// =============================================================================
 // LARGE CONTENT REWRITE (CHUNKED)
 // =============================================================================
 
@@ -234,9 +329,27 @@ export async function rewriteLargeContentWithOpenAI(
     return rewriteWithOpenAI(config, options);
   }
 
+  // First, rewrite title and description separately
+  let rewrittenTitle = options.title || "";
+  let rewrittenDescription = options.description || "";
+  let metaCost = 0;
+
+  if (options.title || options.description) {
+    const metaResult = await rewriteMetaWithOpenAI(
+      config,
+      options.title || "",
+      options.description || "",
+      options.prompt,
+      options.signal
+    );
+    rewrittenTitle = metaResult.title;
+    rewrittenDescription = metaResult.description;
+    metaCost = metaResult.cost;
+  }
+
   // Split into chunks
   const chunks = splitIntoChunks(content, LIMITS.CHUNK_SIZE);
-  let totalCost = 0;
+  let totalCost = metaCost;
   const completedChunks = new Set<number>();
 
   // Report initial progress
@@ -326,30 +439,27 @@ export async function rewriteLargeContentWithOpenAI(
   // Join and normalize
   const finalHtml = normalizeArticleContent(rewrittenChunks.join("\n"));
 
-  // Extract title and description from first chunk or generate
-  let title = options.title || "";
-  let description = options.description || "";
+  // Use rewritten title/description, fallback to extraction from HTML
+  let finalTitle = rewrittenTitle;
+  let finalDescription = rewrittenDescription;
 
-  // Try to extract from result if not provided
-  if (!title && rewrittenChunks[0]) {
+  // Fallback: extract from HTML if not rewritten
+  if (!finalTitle && rewrittenChunks[0]) {
     const match = rewrittenChunks[0].match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
     if (match) {
-      const tempDiv =
-        typeof document !== "undefined"
-          ? document.createElement("div")
-          : null;
-      if (tempDiv) {
-        tempDiv.innerHTML = match[1];
-        title = tempDiv.textContent?.trim() || "";
-      } else {
-        title = match[1].replace(/<[^>]*>/g, "").trim();
-      }
+      finalTitle = match[1].replace(/<[^>]*>/g, "").trim();
+    }
+  }
+  if (!finalDescription && rewrittenChunks[0]) {
+    const pMatch = rewrittenChunks[0].match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    if (pMatch) {
+      finalDescription = pMatch[1].replace(/<[^>]+>/g, "").trim();
     }
   }
 
   return {
-    title: clampString(title, LIMITS.TITLE_MIN, LIMITS.TITLE_MAX),
-    description: clampString(description, 0, LIMITS.DESCRIPTION_MAX),
+    title: clampString(finalTitle, LIMITS.TITLE_MIN, LIMITS.TITLE_MAX),
+    description: clampString(finalDescription, 0, LIMITS.DESCRIPTION_MAX),
     html: clampString(finalHtml, 0, LIMITS.HTML_MAX),
     cost: totalCost,
   };
