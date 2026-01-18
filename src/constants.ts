@@ -85,8 +85,14 @@ export function getModelPricing(model: string): ModelPricing {
 export const DEFAULTS = {
   /** Default model for OpenAI */
   MODEL: "gpt-4.1",
-  /** Default temperature */
+  /** Default temperature (0.9 for creative rewrites) */
   TEMPERATURE: 0.9,
+  /** Top P for diversity */
+  TOP_P: 0.95,
+  /** Frequency penalty to reduce repetition */
+  FREQUENCY_PENALTY: 0.3,
+  /** Presence penalty to encourage new topics */
+  PRESENCE_PENALTY: 0.3,
   /** Default variant count */
   VARIANT_COUNT: 1,
   /** Default prompt template */
