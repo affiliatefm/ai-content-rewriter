@@ -155,6 +155,7 @@ ${options.content}
     };
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
+      // Rate limit - can retry
       if (error.status === 429) {
         const retryAfter = parseInt(
           error.headers?.["retry-after"] || "0",
@@ -162,10 +163,18 @@ ${options.content}
         );
         throw new RateLimitError("openai", retryAfter || undefined);
       }
+      
+      // Extract error message from response body if available
+      let errorMessage = error.message || `OpenAI API error: ${error.status}`;
+      const errorBody = error.error as { error?: { message?: string; code?: string } } | undefined;
+      if (errorBody?.error?.message) {
+        errorMessage = errorBody.error.message;
+      }
+      
       throw new ProviderError(
-        error.message || `OpenAI API error: ${error.status}`,
+        errorMessage,
         "openai",
-        { status: error.status, code: error.code }
+        { status: error.status, code: errorBody?.error?.code || error.code }
       );
     }
     throw error;
@@ -318,6 +327,30 @@ export async function rewriteLargeContentWithOpenAI(
 // MULTIPLE VARIANTS
 // =============================================================================
 
+/**
+ * Check if error is fatal (should not be retried)
+ */
+function isFatalError(error: unknown): boolean {
+  if (error instanceof ProviderError) {
+    const details = error.details as { code?: string; status?: number } | undefined;
+    // Fatal error codes that should not be retried
+    const fatalCodes = [
+      "model_not_found",
+      "invalid_api_key",
+      "insufficient_quota",
+      "invalid_request_error",
+    ];
+    if (details?.code && fatalCodes.includes(details.code)) {
+      return true;
+    }
+    // Fatal HTTP statuses
+    if (details?.status && [400, 401, 403, 404].includes(details.status)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function generateVariantsWithOpenAI(
   config: ProviderConfig,
   options: OpenAIRewriteOptions & {
@@ -328,6 +361,7 @@ export async function generateVariantsWithOpenAI(
 ): Promise<OpenAIRewriteResult[]> {
   const { variantCount, onProgress, onVariantComplete, ...rewriteOptions } = options;
   const results: OpenAIRewriteResult[] = [];
+  const errors: Error[] = [];
   const isLarge = options.content.length > LIMITS.LARGE_ARTICLE_THRESHOLD;
 
   // Report starting
@@ -360,17 +394,25 @@ export async function generateVariantsWithOpenAI(
         results[i] = result;
         onVariantComplete?.(result, i);
       } catch (error) {
+        // Fatal errors should stop immediately
+        if (isFatalError(error)) {
+          throw error;
+        }
+        errors.push(error instanceof Error ? error : new Error(String(error)));
         console.error(`Variant ${i + 1} failed:`, error);
-        // Continue with other variants
       }
     }
   } else {
     // Process small content in parallel
+    let fatalError: Error | null = null;
+    
     const promises = Array.from({ length: variantCount }, async (_, i) => {
-      if (options.signal?.aborted) return;
+      if (options.signal?.aborted || fatalError) return;
 
       let retries = 0;
       while (retries < PROCESSING.MAX_RETRIES) {
+        if (fatalError) return; // Stop if another promise hit a fatal error
+        
         try {
           const result = await rewriteWithOpenAI(config, rewriteOptions);
           results[i] = result;
@@ -387,6 +429,12 @@ export async function generateVariantsWithOpenAI(
 
           return;
         } catch (error) {
+          // Fatal errors should stop all processing
+          if (isFatalError(error)) {
+            fatalError = error instanceof Error ? error : new Error(String(error));
+            return;
+          }
+          
           retries++;
           if (error instanceof RateLimitError) {
             const waitTime =
@@ -396,6 +444,7 @@ export async function generateVariantsWithOpenAI(
               ) + Math.random() * 1000;
             await sleep(waitTime);
           } else if (retries >= PROCESSING.MAX_RETRIES) {
+            errors.push(error instanceof Error ? error : new Error(String(error)));
             console.error(`Variant ${i + 1} failed:`, error);
             return;
           } else {
@@ -410,6 +459,17 @@ export async function generateVariantsWithOpenAI(
     });
 
     await Promise.all(promises);
+    
+    // If there was a fatal error, throw it
+    if (fatalError) {
+      throw fatalError;
+    }
+  }
+
+  // If no results and we have errors, throw the first error
+  const successfulResults = results.filter((r) => r);
+  if (successfulResults.length === 0 && errors.length > 0) {
+    throw errors[0];
   }
 
   // Report done
@@ -417,8 +477,8 @@ export async function generateVariantsWithOpenAI(
     phase: "done",
     currentVariant: variantCount,
     totalVariants: variantCount,
-    message: `Completed ${results.filter((r) => r).length} variants`,
+    message: `Completed ${successfulResults.length} variants`,
   });
 
-  return results.filter((r) => r);
+  return successfulResults;
 }
