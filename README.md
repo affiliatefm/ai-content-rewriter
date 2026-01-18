@@ -161,6 +161,35 @@ const promise = rewrite(content, {
 controller.abort();
 ```
 
+### AI Pattern Masking (Anti-Detection)
+
+By default, the library automatically masks common AI-generated patterns to make content appear more natural:
+
+```typescript
+// Masking is enabled by default
+const results = await rewrite(content, options);
+
+// Disable masking if needed
+const results = await rewrite(content, {
+  ...options,
+  maskAIPatterns: false,
+});
+
+// Or use masking utilities directly
+import { maskAIPatterns, maskAIPatternsInHTML } from "@affiliate.fm/ai-content-rewriter";
+
+const humanizedText = maskAIPatterns(aiGeneratedText);
+const humanizedHtml = maskAIPatternsInHTML(aiGeneratedHtml);
+```
+
+**What gets masked:**
+- Em-dashes and en-dashes → regular dashes
+- Formal academic phrases → casual alternatives ("moreover" → "also", "furthermore" → "plus")
+- Typical AI phrases ("it is important to note" → "note that")
+- Unicode bullet points → simple markers
+- Overly structured patterns (numbered conclusions, "Firstly, Secondly...")
+- Optional: contractions for more natural flow
+
 ## API Reference
 
 ### `rewrite(input, options)`
@@ -205,6 +234,7 @@ interface RewriteOptions {
   promptTemplate?: string;
   variantCount?: number; // 1-30, default: 1
   temperature?: number; // 0-2, default: 0.9
+  maskAIPatterns?: boolean; // default: true
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }

@@ -72,6 +72,8 @@ export interface RewriteOptions {
   onProgress?: ProgressCallback;
   /** Abort signal for cancellation */
   signal?: AbortSignal;
+  /** Apply AI pattern masking to results (default: true) */
+  maskAIPatterns?: boolean;
 }
 
 // =============================================================================

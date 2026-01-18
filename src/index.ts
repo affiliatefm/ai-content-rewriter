@@ -81,3 +81,10 @@ export {
   type OpenAIRewriteOptions,
   type OpenAIRewriteResult,
 } from "./providers/index.js";
+
+// AI Pattern Masking (anti-detection)
+export {
+  maskAIPatterns,
+  maskAIPatternsInHTML,
+  type MaskingOptions,
+} from "./masker.js";

@@ -25,6 +25,7 @@ import {
   generateVariantsWithOpenAI,
   type OpenAIRewriteResult,
 } from "./providers/openai.js";
+import { maskAIPatterns, maskAIPatternsInHTML } from "./masker.js";
 
 // =============================================================================
 // REWRITER CLASS
@@ -77,6 +78,20 @@ export class ContentRewriter {
       onProgress: options.onProgress,
       signal: options.signal,
     });
+
+    // Apply AI pattern masking (default: true)
+    const shouldMask = options.maskAIPatterns !== false;
+    if (shouldMask) {
+      return results.map((result) => ({
+        ...result,
+        title: maskAIPatterns(result.title),
+        description: maskAIPatterns(result.description),
+        content:
+          format === "html"
+            ? maskAIPatternsInHTML(result.content)
+            : maskAIPatterns(result.content),
+      }));
+    }
 
     return results;
   }
