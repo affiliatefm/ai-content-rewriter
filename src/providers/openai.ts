@@ -18,7 +18,6 @@ import {
   getModelPricing,
 } from "../constants.js";
 import {
-  parseAiResponse,
   normalizeArticleContent,
   clampString,
   splitIntoChunks,
@@ -108,17 +107,11 @@ export async function rewriteWithOpenAI(
   const temperature = options.temperature ?? DEFAULTS.TEMPERATURE;
   const maxTokens = options.maxTokens ?? DEFAULTS.MAX_TOKENS;
 
-  // Build the input message
-  const articleBlock = `=== SOURCE START ===
-TITLE:
-${options.title || "[No title provided]"}
-
-DESCRIPTION:
-${options.description || "[No description provided]"}
-
-ARTICLE:
+  // Build user message - just the content to rewrite
+  const userMessage = `Current content:
 ${options.content}
-=== SOURCE END ===`;
+
+Instructions: Rewrite the above content completely while preserving the meaning and HTML structure. Generate an improved version:`;
 
   try {
     const response = await client.chat.completions.create(
@@ -126,13 +119,13 @@ ${options.content}
         model,
         messages: [
           { role: "system", content: options.prompt },
-          { role: "user", content: articleBlock },
+          { role: "user", content: userMessage },
         ],
         temperature,
         max_tokens: maxTokens,
-        top_p: 0.95,
-        frequency_penalty: 0.3,
-        presence_penalty: 0.3,
+        top_p: DEFAULTS.TOP_P,
+        frequency_penalty: DEFAULTS.FREQUENCY_PENALTY,
+        presence_penalty: DEFAULTS.PRESENCE_PENALTY,
       },
       { signal: options.signal }
     );
@@ -141,18 +134,41 @@ ${options.content}
     const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0 };
     const cost = calculateCost(model, usage.prompt_tokens, usage.completion_tokens);
 
-    // Parse response
-    const parsed = parseAiResponse(raw);
+    // Clean up the response - remove markdown code blocks if present
+    let html = raw
+      .replace(/^```html?\n?/i, "")
+      .replace(/\n?```$/i, "")
+      .trim();
 
-    // Normalize and clamp
-    const html = normalizeArticleContent(parsed.html);
+    // Normalize HTML content
+    html = normalizeArticleContent(html);
+    html = clampString(html, 0, LIMITS.HTML_MAX);
 
-    return {
-      title: clampString(parsed.title, LIMITS.TITLE_MIN, LIMITS.TITLE_MAX),
-      description: clampString(parsed.description, 0, LIMITS.DESCRIPTION_MAX),
-      html: clampString(html, 0, LIMITS.HTML_MAX),
-      cost,
-    };
+    // Extract title from H1 in the rewritten HTML
+    const titleMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    let title = "";
+    if (titleMatch) {
+      const div = { innerHTML: "" };
+      // Simple HTML tag stripping
+      title = titleMatch[1].replace(/<[^>]+>/g, "").trim();
+    }
+    if (!title) {
+      title = options.title || "";
+    }
+    title = clampString(title, LIMITS.TITLE_MIN, LIMITS.TITLE_MAX);
+
+    // Generate description from first paragraph text
+    let description = "";
+    const pMatch = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    if (pMatch) {
+      description = pMatch[1].replace(/<[^>]+>/g, "").trim().slice(0, LIMITS.DESCRIPTION_MAX);
+    }
+    if (!description) {
+      description = options.description || "";
+    }
+    description = clampString(description, 0, LIMITS.DESCRIPTION_MAX);
+
+    return { title, description, html, cost };
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
       // Rate limit - can retry
@@ -373,18 +389,42 @@ export async function generateVariantsWithOpenAI(
   });
 
   if (isLarge) {
-    // Process large content sequentially to avoid rate limits
-    for (let i = 0; i < variantCount; i++) {
-      if (options.signal?.aborted) break;
+    // Process large content variants in PARALLEL for better performance
+    let fatalError: Error | null = null;
+    const variantStates: Map<number, { completed: number; total: number }> = new Map();
+    
+    const promises = Array.from({ length: variantCount }, async (_, i) => {
+      if (options.signal?.aborted || fatalError) return;
+      
+      variantStates.set(i, { completed: 0, total: 0 });
 
       try {
         const result = await rewriteLargeContentWithOpenAI(config, {
           ...rewriteOptions,
           onProgress: (progress) => {
+            if (progress.totalChunks) {
+              variantStates.set(i, { 
+                completed: progress.currentChunk || 0, 
+                total: progress.totalChunks 
+              });
+            }
+            
+            // Calculate total progress across all variants
+            let totalCompleted = 0;
+            let totalChunks = 0;
+            for (const state of variantStates.values()) {
+              totalCompleted += state.completed;
+              totalChunks += state.total || 1;
+            }
+            
             onProgress?.({
-              ...progress,
-              currentVariant: i + 1,
+              phase: "generating",
+              currentVariant: results.filter(r => r).length,
               totalVariants: variantCount,
+              currentChunk: totalCompleted,
+              totalChunks: totalChunks,
+              message: `Variant ${i + 1}: ${progress.message}`,
+              costSoFar: progress.costSoFar,
             });
           },
           variantIndex: i,
@@ -393,14 +433,30 @@ export async function generateVariantsWithOpenAI(
 
         results[i] = result;
         onVariantComplete?.(result, i);
+        
+        // Report completion
+        const completed = results.filter(r => r).length;
+        onProgress?.({
+          phase: "generating",
+          currentVariant: completed,
+          totalVariants: variantCount,
+          message: `Completed ${completed}/${variantCount} variants`,
+        });
       } catch (error) {
         // Fatal errors should stop immediately
         if (isFatalError(error)) {
-          throw error;
+          fatalError = error instanceof Error ? error : new Error(String(error));
+          return;
         }
         errors.push(error instanceof Error ? error : new Error(String(error)));
         console.error(`Variant ${i + 1} failed:`, error);
       }
+    });
+
+    await Promise.all(promises);
+    
+    if (fatalError) {
+      throw fatalError;
     }
   } else {
     // Process small content in parallel

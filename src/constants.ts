@@ -52,8 +52,8 @@ export interface ModelPricing {
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  // GPT-4.1 series (latest)
-  "gpt-4.1": { input: 2.0, output: 8.0 },
+  // GPT-4.1 series (latest) - prices as of Jan 2026
+  "gpt-4.1": { input: 5.0, output: 15.0 },
   "gpt-4.1-mini": { input: 0.4, output: 1.6 },
   "gpt-4.1-nano": { input: 0.1, output: 0.4 },
   // GPT-4o series
@@ -143,15 +143,7 @@ DO NOT:
 - Change the language of the content
 - Simplify the text to a primitive level
 
-OUTPUT FORMAT:
-Return a JSON object with exactly these fields:
-{
-  "title": "rewritten title here",
-  "description": "rewritten description here",
-  "html": "rewritten HTML content here"
-}
-
-Return ONLY the JSON object, no additional text or formatting.`,
+Return only the rewritten content without any additional formatting or explanation.`,
   },
 
   SEO_FOCUSED: {
@@ -176,14 +168,7 @@ REWRITING RULES:
 4. Maintain factual accuracy
 5. Keep HTML structure intact
 
-OUTPUT FORMAT:
-{
-  "title": "SEO-optimized title",
-  "description": "compelling meta description",
-  "html": "rewritten HTML content"
-}
-
-Return ONLY the JSON object.`,
+Return only the rewritten content without any additional formatting or explanation.`,
   },
 
   CASUAL_TONE: {
@@ -207,14 +192,7 @@ REWRITING RULES:
 4. Add humor where appropriate (but stay professional)
 5. Preserve key information and HTML structure
 
-OUTPUT FORMAT:
-{
-  "title": "engaging casual title",
-  "description": "friendly description",
-  "html": "conversational HTML content"
-}
-
-Return ONLY the JSON object.`,
+Return only the rewritten content without any additional formatting or explanation.`,
   },
 
   FORMAL_PROFESSIONAL: {
@@ -238,14 +216,7 @@ REWRITING RULES:
 4. Support claims with clear reasoning
 5. Preserve HTML structure and formatting
 
-OUTPUT FORMAT:
-{
-  "title": "professional title",
-  "description": "authoritative description",
-  "html": "formal HTML content"
-}
-
-Return ONLY the JSON object.`,
+Return only the rewritten content without any additional formatting or explanation.`,
   },
 
   CUSTOM: {
