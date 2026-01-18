@@ -1,6 +1,6 @@
 {
   "name": "@affiliate.fm/ai-content-rewriter",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "AI-powered content rewriting library. Supports multiple providers, format auto-detection, and configurable prompts.",
   "type": "module",
   "main": "./lib/index.js",
