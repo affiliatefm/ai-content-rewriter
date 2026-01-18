@@ -35,6 +35,7 @@ import {
   extractTitleFromHtml,
   extractTitleFromMarkdown,
   extractDescriptionFromHtml,
+  normalizeArticleContent,
 } from "./utils.js";
 import {
   generateVariantsWithOpenAI,
@@ -155,21 +156,51 @@ export class ContentRewriter {
       signal: options.signal,
     });
 
-    // Apply AI pattern masking (default: true)
+    // Apply AI pattern masking (default: true) + normalization
+    // Order matters!
+    // 1. maskAIPatterns/maskAIPatternsInHTML
+    // 2. normalizeArticleContent (to fix spacing after masking)
     const shouldMask = options.maskAIPatterns !== false;
-    if (shouldMask) {
-      return results.map((result) => ({
+    
+    return results.map((result) => {
+      let processedTitle = result.title;
+      let processedDescription = result.description;
+      let processedContent = result.content;
+      
+      if (shouldMask) {
+        // Title: more conservative masking (no contractions, no structural removal)
+        processedTitle = maskAIPatterns(processedTitle, {
+          addNaturalVariations: false,
+          removeStructuralPatterns: false,
+        });
+        
+        // Description: apply most transformations
+        processedDescription = maskAIPatterns(processedDescription, {
+          addNaturalVariations: true,
+        });
+        
+        // Content: full masking for HTML, then normalize
+        if (format === "html") {
+          processedContent = maskAIPatternsInHTML(processedContent, {
+            addNaturalVariations: true,
+          });
+          // Normalize inline spacing AFTER masking (critical!)
+          processedContent = normalizeArticleContent(processedContent);
+        } else {
+          processedContent = maskAIPatterns(processedContent);
+        }
+      } else if (format === "html") {
+        // Even without masking, normalize HTML spacing
+        processedContent = normalizeArticleContent(processedContent);
+      }
+      
+      return {
         ...result,
-        title: maskAIPatterns(result.title),
-        description: maskAIPatterns(result.description),
-        content:
-          format === "html"
-            ? maskAIPatternsInHTML(result.content)
-            : maskAIPatterns(result.content),
-      }));
-    }
-
-    return results;
+        title: processedTitle,
+        description: processedDescription,
+        content: processedContent,
+      };
+    });
   }
 
   /**

@@ -2,11 +2,6 @@
  * OpenAI Provider
  * ===============
  * Implementation for OpenAI API integration.
- * 
- * Architecture: Isolated responsibilities
- * - rewriteContentOnly(): HTML content rewriting
- * - generateTitle(): Title generation from content summary
- * - generateDescription(): Description generation from content summary
  */
 
 import OpenAI from "openai";
@@ -21,9 +16,9 @@ import {
   LIMITS,
   PROCESSING,
   getModelPricing,
+  DEFAULT_REWRITE_PROMPT,
 } from "../constants.js";
 import {
-  normalizeArticleContent,
   clampString,
   splitIntoChunks,
   processInBatches,
@@ -109,21 +104,8 @@ export function estimateCost(
 }
 
 // =============================================================================
-// ISOLATED FUNCTIONS: CONTENT ONLY
+// CONTENT REWRITE
 // =============================================================================
-
-const CONTENT_REWRITE_PROMPT = `You are a professional copywriter. Rewrite the HTML content completely while preserving:
-- The same language as the original
-- HTML structure and tags
-- Meaning and factual accuracy
-- SEO value
-
-Rules:
-1. Change 90-95% of the text - completely reformulate sentences
-2. Use synonyms and alternative expressions
-3. Vary sentence length and structure
-4. Keep brand names and important keywords
-5. Return ONLY the rewritten HTML, no explanations`;
 
 async function rewriteContentOnly(
   client: OpenAI,
@@ -134,14 +116,27 @@ async function rewriteContentOnly(
   maxTokens: number,
   signal?: AbortSignal
 ): Promise<{ html: string; cost: number }> {
-  const systemPrompt = customPrompt || CONTENT_REWRITE_PROMPT;
+  // Use custom prompt or default
+  const instructions = customPrompt || DEFAULT_REWRITE_PROMPT;
   
+  // Structure:
+  // - Simple system prompt
+  // - Instructions in user message
+  const systemPrompt = "You are a professional content writer. Generate high-quality HTML content based on the provided context and instructions.";
+  
+  const userMessage = `Current content:
+${content}
+
+Instructions: ${instructions}
+
+Generate an improved version:`;
+
   const response = await client.chat.completions.create(
     {
       model,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Rewrite this HTML content:\n\n${content}` },
+        { role: "user", content: userMessage },
       ],
       temperature,
       max_tokens: maxTokens,
@@ -161,24 +156,14 @@ async function rewriteContentOnly(
     .replace(/\n?```$/i, "")
     .trim();
 
-  html = normalizeArticleContent(html);
   html = clampString(html, 0, LIMITS.HTML_MAX);
 
   return { html, cost };
 }
 
 // =============================================================================
-// ISOLATED FUNCTIONS: TITLE GENERATION
+// TITLE GENERATION
 // =============================================================================
-
-const TITLE_PROMPT = `You are a professional copywriter and SEO specialist. Generate a compelling title based on the article summary.
-
-Rules:
-1. Write in the SAME LANGUAGE as the content
-2. Make it engaging and click-worthy
-3. Keep important keywords if mentioned
-4. Optimal length: 50-70 characters
-5. Return ONLY the title, nothing else`;
 
 async function generateTitle(
   client: OpenAI,
@@ -187,18 +172,27 @@ async function generateTitle(
   originalTitle: string,
   signal?: AbortSignal
 ): Promise<{ title: string; cost: number }> {
-  const userMessage = originalTitle
-    ? `Original title: "${originalTitle}"\n\nArticle summary:\n${contentSummary}\n\nGenerate a completely new, unique title:`
-    : `Article summary:\n${contentSummary}\n\nGenerate a compelling title:`;
+  const systemPrompt = `You are a professional content writer. Generate a compelling page title.
+IMPORTANT: Return ONLY the title text itself, without any prefixes like "Sample Title:" or explanations.
+The title should be clear, engaging, and SEO-friendly.`;
+
+  const userMessage = `Current title: ${originalTitle}
+
+Context (article summary):
+${contentSummary}
+
+Instructions: Create a COMPLETELY rewritten, unique title. Keep the same language. Make it engaging and SEO-friendly.
+
+Generate an improved title (return ONLY the title text):`;
 
   const response = await client.chat.completions.create(
     {
       model,
       messages: [
-        { role: "system", content: TITLE_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      temperature: 1.0, // More creative for titles
+      temperature: 1.0,
       max_tokens: 100,
       top_p: DEFAULTS.TOP_P,
     },
@@ -209,25 +203,20 @@ async function generateTitle(
   const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0 };
   const cost = calculateCost(model, usage.prompt_tokens, usage.completion_tokens);
 
-  // Clean up - remove quotes, extra whitespace
-  let title = raw.trim().replace(/^["']|["']$/g, "").trim();
+  let title = raw.trim()
+    .replace(/^(Sample Title|Title|Example):\s*/i, "")
+    .replace(/^["'](.+)["']$/, "$1")
+    .split("\n")[0]
+    .trim();
+    
   title = clampString(title, LIMITS.TITLE_MIN, LIMITS.TITLE_MAX);
 
   return { title, cost };
 }
 
 // =============================================================================
-// ISOLATED FUNCTIONS: DESCRIPTION GENERATION
+// DESCRIPTION GENERATION
 // =============================================================================
-
-const DESCRIPTION_PROMPT = `You are a professional copywriter and SEO specialist. Generate a meta description based on the article summary.
-
-Rules:
-1. Write in the SAME LANGUAGE as the content
-2. Summarize the key value proposition
-3. Include a subtle call-to-action if appropriate
-4. Optimal length: 150-160 characters
-5. Return ONLY the description, nothing else`;
 
 async function generateDescription(
   client: OpenAI,
@@ -236,18 +225,27 @@ async function generateDescription(
   originalDescription: string,
   signal?: AbortSignal
 ): Promise<{ description: string; cost: number }> {
-  const userMessage = originalDescription
-    ? `Original description: "${originalDescription}"\n\nArticle summary:\n${contentSummary}\n\nGenerate a completely new, unique description:`
-    : `Article summary:\n${contentSummary}\n\nGenerate a meta description:`;
+  const systemPrompt = `You are a professional content writer. Generate a compelling meta description.
+IMPORTANT: Return ONLY plain text description, without any HTML tags, formatting, or prefixes.
+The description should be concise, informative, and encourage clicks from search results.`;
+
+  const userMessage = `Current description: ${originalDescription}
+
+Context (article summary):
+${contentSummary}
+
+Instructions: Create a COMPLETELY rewritten, unique meta description. Keep the same language. 150-160 characters ideal.
+
+Generate an improved description (return ONLY plain text, no HTML):`;
 
   const response = await client.chat.completions.create(
     {
       model,
       messages: [
-        { role: "system", content: DESCRIPTION_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      temperature: 0.8, // Slightly less creative, more factual
+      temperature: 0.8,
       max_tokens: 200,
       top_p: DEFAULTS.TOP_P,
     },
@@ -258,7 +256,13 @@ async function generateDescription(
   const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0 };
   const cost = calculateCost(model, usage.prompt_tokens, usage.completion_tokens);
 
-  let description = raw.trim().replace(/^["']|["']$/g, "").trim();
+  let description = raw.trim()
+    .replace(/<[^>]*>/g, "")
+    .replace(/^(Sample Description|Description|Example):\s*/i, "")
+    .replace(/^["'](.+)["']$/, "$1")
+    .replace(/\n+/g, " ")
+    .trim();
+    
   description = clampString(description, 0, LIMITS.DESCRIPTION_MAX);
 
   return { description, cost };
@@ -268,8 +272,7 @@ async function generateDescription(
 // HELPER: CREATE CONTENT SUMMARY
 // =============================================================================
 
-function createContentSummary(html: string, maxLength: number = 1000): string {
-  // Strip HTML tags for summary
+function createContentSummary(html: string, maxLength: number = 2000): string {
   const text = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -277,19 +280,17 @@ function createContentSummary(html: string, maxLength: number = 1000): string {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Take first N characters as summary
   if (text.length <= maxLength) {
     return text;
   }
 
-  // Cut at word boundary
   const cut = text.slice(0, maxLength);
   const lastSpace = cut.lastIndexOf(" ");
   return cut.slice(0, lastSpace > 0 ? lastSpace : maxLength) + "...";
 }
 
 // =============================================================================
-// MAIN REWRITE FUNCTION (ORCHESTRATES ALL THREE)
+// MAIN REWRITE FUNCTION
 // =============================================================================
 
 export async function rewriteWithOpenAI(
@@ -301,13 +302,11 @@ export async function rewriteWithOpenAI(
   const temperature = options.temperature ?? DEFAULTS.TEMPERATURE;
   const maxTokens = options.maxTokens ?? DEFAULTS.MAX_TOKENS;
 
-  // Create summary for title/description generation
   const contentSummary = createContentSummary(options.content);
 
   try {
     // Run all three in PARALLEL
     const [contentResult, titleResult, descResult] = await Promise.all([
-      // 1. Rewrite HTML content
       rewriteContentOnly(
         client,
         model,
@@ -317,11 +316,9 @@ export async function rewriteWithOpenAI(
         maxTokens,
         options.signal
       ),
-      // 2. Generate new title
       options.title
         ? generateTitle(client, model, contentSummary, options.title, options.signal)
         : Promise.resolve({ title: "", cost: 0 }),
-      // 3. Generate new description
       options.description
         ? generateDescription(client, model, contentSummary, options.description, options.signal)
         : Promise.resolve({ description: "", cost: 0 }),
@@ -356,10 +353,7 @@ export async function rewriteWithOpenAI(
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
       if (error.status === 429) {
-        const retryAfter = parseInt(
-          error.headers?.["retry-after"] || "0",
-          10
-        );
+        const retryAfter = parseInt(error.headers?.["retry-after"] || "0", 10);
         throw new RateLimitError("openai", retryAfter || undefined);
       }
 
@@ -395,7 +389,6 @@ export async function rewriteLargeContentWithOpenAI(
   const variantIndex = options.variantIndex ?? 0;
   const totalVariants = options.totalVariants ?? 1;
 
-  // Use regular rewrite for small content
   if (content.length <= LIMITS.LARGE_ARTICLE_THRESHOLD) {
     return rewriteWithOpenAI(config, options);
   }
@@ -403,10 +396,9 @@ export async function rewriteLargeContentWithOpenAI(
   const client = getClient(config);
   const model = config.model || DEFAULTS.MODEL;
 
-  // Create summary for title/description BEFORE chunking
   const contentSummary = createContentSummary(content, 1500);
 
-  // Start title/description generation in parallel with content chunking
+  // Start title/description in parallel with chunking
   const metaPromise = Promise.all([
     options.title
       ? generateTitle(client, model, contentSummary, options.title, options.signal)
@@ -416,12 +408,10 @@ export async function rewriteLargeContentWithOpenAI(
       : Promise.resolve({ description: "", cost: 0 }),
   ]);
 
-  // Split into chunks
   const chunks = splitIntoChunks(content, LIMITS.CHUNK_SIZE);
   let totalCost = 0;
   const completedChunks = new Set<number>();
 
-  // Report initial progress
   options.onProgress?.({
     phase: "generating",
     currentVariant: variantIndex + 1,
@@ -431,12 +421,6 @@ export async function rewriteLargeContentWithOpenAI(
     message: `Starting variant ${variantIndex + 1}...`,
   });
 
-  // Chunk prompt - simpler, focused only on content
-  const chunkPrompt = `You are a professional copywriter. Rewrite this HTML content section completely.
-Keep the same language. Preserve HTML structure. Change 90%+ of the text while keeping meaning.
-Return ONLY the rewritten HTML.`;
-
-  // Process chunks
   const chunkProcessor = async (
     chunk: { content: string; index: number; isFirst: boolean; isLast: boolean }
   ): Promise<{ html: string; cost: number }> => {
@@ -447,7 +431,7 @@ Return ONLY the rewritten HTML.`;
           client,
           model,
           chunk.content,
-          chunkPrompt,
+          options.prompt,
           options.temperature ?? DEFAULTS.TEMPERATURE,
           DEFAULTS.MAX_TOKENS,
           options.signal
@@ -484,7 +468,6 @@ Return ONLY the rewritten HTML.`;
     );
   };
 
-  // Process content chunks
   const chunkResults = await processInBatches(
     chunks,
     chunkProcessor,
@@ -492,10 +475,8 @@ Return ONLY the rewritten HTML.`;
     PROCESSING.CHUNK_BATCH_DELAY_MS
   );
 
-  // Wait for meta generation to complete
   const [titleResult, descResult] = await metaPromise;
 
-  // Aggregate results
   const rewrittenChunks: string[] = [];
   for (const result of chunkResults) {
     if (result?.html) {
@@ -506,10 +487,8 @@ Return ONLY the rewritten HTML.`;
 
   totalCost += titleResult.cost + descResult.cost;
 
-  // Join and normalize
-  const finalHtml = normalizeArticleContent(rewrittenChunks.join("\n"));
+  const finalHtml = rewrittenChunks.join("\n");
 
-  // Use generated title/description, fallback to extraction
   let finalTitle = titleResult.title;
   let finalDescription = descResult.description;
 
@@ -588,9 +567,7 @@ export async function generateVariantsWithOpenAI(
   const isLargeContent = options.content.length > LIMITS.LARGE_ARTICLE_THRESHOLD;
   let fatalError: Error | null = null;
 
-  // Process all variants in parallel
   const variantPromises = Array.from({ length: variantCount }, async (_, i) => {
-    // Check if we should abort due to fatal error
     if (fatalError) {
       throw fatalError;
     }
@@ -637,7 +614,6 @@ export async function generateVariantsWithOpenAI(
 
     return results;
   } catch (error) {
-    // If we have a fatal error, throw it
     if (fatalError) {
       throw fatalError;
     }
