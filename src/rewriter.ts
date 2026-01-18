@@ -24,11 +24,9 @@ import type {
   RewriteResult,
   RewriterOptions,
   RewriteCallOptions,
-  RewriteOptions,
   ProviderConfig,
   ProgressCallback,
   ContentFormat,
-  RewriterConfig,
 } from "./types.js";
 import { ValidationError, ProviderError } from "./types.js";
 import { DEFAULTS, PROMPTS, type PromptTemplateKey } from "./constants.js";
@@ -381,84 +379,3 @@ export class ContentRewriter {
   }
 }
 
-// =============================================================================
-// CONVENIENCE FUNCTIONS (for quick usage without instantiation)
-// =============================================================================
-
-/**
- * Quick rewrite function for simple one-off usage.
- * Creates a temporary ContentRewriter instance.
- *
- * @example
- * ```typescript
- * const results = await rewrite(html, {
- *   provider: { type: 'openai', apiKey: 'sk-...' },
- *   variants: 3,
- * });
- * ```
- *
- * @deprecated Prefer using ContentRewriter class for better control and reusability.
- */
-export async function rewrite(
-  input: ContentInput | string,
-  options: RewriteOptions
-): Promise<RewriteResult[]> {
-  const rewriter = new ContentRewriter({
-    provider: options.provider.type,
-    apiKey: options.provider.apiKey,
-    model: options.provider.model,
-    baseUrl: options.provider.baseUrl,
-    temperature: options.temperature,
-  });
-
-  return rewriter.rewrite(typeof input === "string" ? { content: input } : input, {
-    prompt: options.prompt,
-    promptTemplate: options.promptTemplate,
-    variants: options.variantCount,
-    temperature: options.temperature,
-    onProgress: options.onProgress,
-    signal: options.signal,
-    maskAIPatterns: options.maskAIPatterns,
-  });
-}
-
-/**
- * Quick single rewrite (returns first variant).
- *
- * @deprecated Prefer using ContentRewriter.rewriteOne() for better control.
- */
-export async function rewriteOne(
-  input: ContentInput | string,
-  options: RewriteOptions
-): Promise<RewriteResult> {
-  const results = await rewrite(input, { ...options, variantCount: 1 });
-  if (results.length === 0) {
-    throw new ProviderError("No results returned from provider", options.provider.type);
-  }
-  return results[0];
-}
-
-// =============================================================================
-// LEGACY CLASS SUPPORT
-// =============================================================================
-
-/**
- * Legacy factory function for backward compatibility.
- * @deprecated Use `new ContentRewriter(options)` instead.
- */
-export function createRewriter(config: RewriterConfig): ContentRewriter {
-  if (!config.defaultProvider?.type || !config.defaultProvider?.apiKey) {
-    throw new ValidationError(
-      "Legacy createRewriter requires defaultProvider with type and apiKey"
-    );
-  }
-
-  return new ContentRewriter({
-    provider: config.defaultProvider.type,
-    apiKey: config.defaultProvider.apiKey,
-    model: config.defaultProvider.model,
-    baseUrl: config.defaultProvider.baseUrl,
-    temperature: config.defaultOptions?.temperature,
-    customPrompts: config.customPrompts,
-  });
-}

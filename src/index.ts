@@ -7,7 +7,6 @@
  * ```typescript
  * import { ContentRewriter } from "@affiliate.fm/ai-content-rewriter";
  *
- * // Create rewriter instance (recommended)
  * const rewriter = new ContentRewriter({
  *   provider: "openai",
  *   apiKey: "sk-...",
@@ -26,13 +25,11 @@
 // Main class export
 export { ContentRewriter } from "./rewriter.js";
 
-// Legacy convenience functions (deprecated but supported)
-export { rewrite, rewriteOne, createRewriter } from "./rewriter.js";
-
 // Types
 export type {
-  // New API types
+  // Constructor options
   RewriterOptions,
+  // Per-call options
   RewriteCallOptions,
   // Content types
   ContentInput,
@@ -46,9 +43,6 @@ export type {
   ProgressCallback,
   StreamingResult,
   StreamingCallback,
-  // Legacy types (deprecated)
-  RewriteOptions,
-  RewriterConfig,
 } from "./types.js";
 
 // Errors

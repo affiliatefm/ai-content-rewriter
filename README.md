@@ -275,20 +275,6 @@ interface RewriteResult {
 }
 ```
 
-## Legacy API (Deprecated)
-
-The function-based API still works but is deprecated:
-
-```typescript
-import { rewrite } from "@affiliate.fm/ai-content-rewriter";
-
-// Still works, but prefer ContentRewriter class
-const results = await rewrite(content, {
-  provider: { type: "openai", apiKey: "sk-...", model: "gpt-4.1" },
-  variantCount: 3,
-});
-```
-
 ## Error Handling
 
 ```typescript

@@ -105,28 +105,6 @@ export interface RewriteCallOptions {
   maskAIPatterns?: boolean;
 }
 
-/**
- * @deprecated Use RewriteCallOptions instead. This is kept for backward compatibility.
- */
-export interface RewriteOptions {
-  /** Provider configuration */
-  provider: ProviderConfig;
-  /** Custom prompt (uses built-in if not specified) */
-  prompt?: string;
-  /** Prompt template key from built-in templates */
-  promptTemplate?: string;
-  /** Number of variants to generate (default: 1) */
-  variantCount?: number;
-  /** Temperature for generation (0-2, default: 0.9) */
-  temperature?: number;
-  /** Progress callback for tracking generation */
-  onProgress?: ProgressCallback;
-  /** Abort signal for cancellation */
-  signal?: AbortSignal;
-  /** Apply AI pattern masking to results (default: true) */
-  maskAIPatterns?: boolean;
-}
-
 // =============================================================================
 // PROGRESS TRACKING
 // =============================================================================
@@ -164,22 +142,6 @@ export interface StreamingResult {
 }
 
 export type StreamingCallback = (result: StreamingResult) => void;
-
-// =============================================================================
-// LEGACY CONFIG (deprecated)
-// =============================================================================
-
-/**
- * @deprecated Use RewriterOptions in constructor instead.
- */
-export interface RewriterConfig {
-  /** Default provider configuration */
-  defaultProvider?: Partial<ProviderConfig>;
-  /** Default options for all rewrites */
-  defaultOptions?: Partial<RewriteOptions>;
-  /** Custom prompt templates */
-  customPrompts?: Record<string, string>;
-}
 
 // =============================================================================
 // ERRORS

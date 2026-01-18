@@ -5,16 +5,16 @@
  * Excludes Node.js-specific features.
  */
 
-// Main exports (same as index)
-export { ContentRewriter, rewrite, rewriteOne } from "./rewriter.js";
+// Main class export
+export { ContentRewriter } from "./rewriter.js";
 
 // Types
 export type {
+  RewriterOptions,
+  RewriteCallOptions,
   ContentInput,
   ContentFormat,
   RewriteResult,
-  RewriteOptions,
-  RewriterConfig,
   ProviderConfig,
   ProviderType,
   RewriteProgress,
@@ -46,4 +46,16 @@ export {
   detectFormat,
   estimateTokens,
   normalizeArticleContent,
+  checkUniqueness,
+  type UniquenessResult,
 } from "./utils.js";
+
+// Cost estimation
+export { estimateCost, calculateCost } from "./providers/openai.js";
+
+// AI Pattern Masking
+export {
+  maskAIPatterns,
+  maskAIPatternsInHTML,
+  type MaskingOptions,
+} from "./masker.js";
