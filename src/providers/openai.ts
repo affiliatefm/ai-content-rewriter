@@ -408,7 +408,45 @@ export async function rewriteLargeContentWithOpenAI(
       : Promise.resolve({ description: "", cost: 0 }),
   ]);
 
-  const chunks = splitIntoChunks(content, LIMITS.CHUNK_SIZE);
+  const rawChunks = splitIntoChunks(
+    content,
+    LIMITS.CHUNK_SIZE,
+    LIMITS.CHUNK_OVERLAP
+  );
+  const chunks: Array<{
+    content: string;
+    context: string;
+    index: number;
+    isFirst: boolean;
+    isLast: boolean;
+  }> = [];
+
+  for (let i = 0; i < rawChunks.length; i++) {
+    const raw = rawChunks[i];
+    const hasContext = i > 0;
+    const overlapSize = hasContext
+      ? Math.min(LIMITS.CHUNK_OVERLAP, raw.content.length)
+      : 0;
+    const context = hasContext ? raw.content.slice(0, overlapSize) : "";
+    const chunkContent = hasContext ? raw.content.slice(overlapSize) : raw.content;
+
+    if (chunkContent.trim().length === 0) {
+      continue;
+    }
+
+    const index = chunks.length;
+    chunks.push({
+      content: chunkContent,
+      context,
+      index,
+      isFirst: index === 0,
+      isLast: false,
+    });
+  }
+
+  if (chunks.length > 0) {
+    chunks[chunks.length - 1].isLast = true;
+  }
   let totalCost = 0;
   const completedChunks = new Set<number>();
 
@@ -422,16 +460,29 @@ export async function rewriteLargeContentWithOpenAI(
   });
 
   const chunkProcessor = async (
-    chunk: { content: string; index: number; isFirst: boolean; isLast: boolean }
+    chunk: {
+      content: string;
+      context: string;
+      index: number;
+      isFirst: boolean;
+      isLast: boolean;
+    }
   ): Promise<{ html: string; cost: number }> => {
     let retries = 0;
     while (retries < PROCESSING.MAX_RETRIES) {
       try {
+        const chunkPrompt = chunk.context
+          ? `${options.prompt}\n\nIMPORTANT: You will receive a Context section for reference only. Rewrite ONLY the Chunk to rewrite section and return only its rewritten HTML. Do NOT include the context in the output.`
+          : options.prompt;
+        const chunkContent = chunk.context
+          ? `Context (do not include in output):\n${chunk.context}\n\nChunk to rewrite:\n${chunk.content}`
+          : chunk.content;
+
         const result = await rewriteContentOnly(
           client,
           model,
-          chunk.content,
-          options.prompt,
+          chunkContent,
+          chunkPrompt,
           options.temperature ?? DEFAULTS.TEMPERATURE,
           DEFAULTS.MAX_TOKENS,
           options.signal

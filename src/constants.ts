@@ -21,6 +21,8 @@ export const LIMITS = {
   LARGE_ARTICLE_THRESHOLD: 12000,
   /** Default chunk size for large articles */
   CHUNK_SIZE: 2800,
+  /** Overlap between chunks for context (characters) */
+  CHUNK_OVERLAP: 200,
   /** Maximum rewrites per batch */
   MAX_REWRITES: 30,
   /** Minimum rewrites */

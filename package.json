@@ -1,7 +1,7 @@
 {
   "name": "@affiliate.fm/ai-content-rewriter",
-  "version": "1.2.2",
-  "description": "AI-powered content rewriting library. Supports multiple providers, format auto-detection, and configurable prompts.",
+  "version": "1.2.3",
+  "description": "AI-powered content rewriting library for OpenAI (gpt-4.1). Includes format auto-detection and configurable prompts.",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",

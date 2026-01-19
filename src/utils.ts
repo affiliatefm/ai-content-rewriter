@@ -365,18 +365,34 @@ export function parseAiResponse(raw: string): ParsedResponse {
 // Stop words for multiple languages (filtered from uniqueness calculation)
 const STOP_WORDS = new Set([
   // English
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-  'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
-  'to', 'was', 'will', 'with', 'this', 'but', 'they', 'have',
-  'had', 'what', 'when', 'where', 'who', 'which', 'why', 'how',
-  'all', 'would', 'there', 'their', 'been', 'if', 'more', 'can',
-  'her', 'him', 'she', 'my', 'than', 'then', 'them', 'these',
-  'so', 'some', 'up', 'out', 'about', 'into', 'just', 'not', 'no',
+  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+  "has", "he", "in", "is", "it", "its", "of", "on", "that", "the",
+  "to", "was", "will", "with", "this", "but", "they", "have",
+  "had", "what", "when", "where", "who", "which", "why", "how",
+  "all", "would", "there", "their", "been", "if", "more", "can",
+  "her", "him", "she", "my", "than", "then", "them", "these",
+  "so", "some", "up", "out", "about", "into", "just", "not", "no",
   // Russian
-  'и', 'в', 'не', 'на', 'я', 'что', 'он', 'с', 'как', 'а', 'то', 'это',
-  'по', 'к', 'но', 'его', 'все', 'она', 'так', 'о', 'из', 'у', 'же',
-  'ты', 'за', 'бы', 'от', 'мы', 'до', 'вы', 'ли', 'если', 'уже',
-  'или', 'ни', 'да', 'во', 'под', 'нет', 'только', 'ее', 'мне', 'было',
+  "и", "в", "не", "на", "я", "что", "он", "с", "как", "а", "то", "это",
+  "по", "к", "но", "его", "все", "она", "так", "о", "из", "у", "же",
+  "ты", "за", "бы", "от", "мы", "до", "вы", "ли", "если", "уже",
+  "или", "ни", "да", "во", "под", "нет", "только", "ее", "мне", "было",
+  "вот", "от", "меня", "еще", "ему", "теперь", "даже",
+  // Spanish
+  "el", "la", "de", "que", "y", "a", "en", "un", "ser", "se", "no", "haber",
+  "por", "con", "su", "para", "como", "estar", "tener", "le", "lo", "todo",
+  "pero", "más", "hacer", "o", "poder", "decir", "este", "ir", "otro",
+  "ese", "si", "me", "ya", "ver", "porque", "dar", "cuando", "muy",
+  // French
+  "le", "de", "un", "être", "et", "à", "il", "avoir", "ne", "je", "son",
+  "que", "se", "qui", "ce", "dans", "en", "du", "elle", "au", "pour",
+  "pas", "vous", "par", "sur", "faire", "plus", "pouvoir", "aller",
+  "mon", "dire", "avec", "tout", "mais", "y", "voir", "bien",
+  // German
+  "der", "die", "und", "in", "den", "von", "zu", "das", "mit", "sich",
+  "des", "auf", "für", "ist", "im", "dem", "nicht", "ein", "eine", "als",
+  "auch", "es", "an", "werden", "aus", "er", "hat", "dass", "sie", "nach",
+  "wird", "bei", "einer", "um", "am", "sind", "noch", "wie", "einem", "über",
 ]);
 
 export interface UniquenessResult {
@@ -395,7 +411,7 @@ function preprocessText(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/<[^>]*>/g, ' ')
-    .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')

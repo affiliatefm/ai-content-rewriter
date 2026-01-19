@@ -1,6 +1,6 @@
 # AI Content Rewriter
 
-AI-powered content rewriting library. Supports multiple providers, format auto-detection, and configurable prompts.
+AI-powered content rewriting library for OpenAI (gpt-4.1). Includes format auto-detection and configurable prompts.
 
 Built by [Affiliate.FM](https://affiliate.fm) — independent media and open-source tools for ethical affiliate marketing.
 
@@ -52,7 +52,7 @@ const [result] = await rewriter.rewrite(html);
 // With options
 const results = await rewriter.rewrite(html, {
   variants: 3,
-  promptTemplate: "SEO_FOCUSED",
+  promptTemplate: "DEFAULT",
   temperature: 0.8,            // Override default
   onProgress: (p) => console.log(`${p.currentVariant}/${p.totalVariants}`),
 });
@@ -90,13 +90,11 @@ const [result] = await rewriter.rewrite({ content: "...", format: "html" });
 import { PROMPTS } from "@affiliate.fm/ai-content-rewriter";
 
 // Available templates:
-// - MULTILINGUAL_DEFAULT - Universal rewrite preserving language
-// - SEO_FOCUSED - Optimized for search engines
-// - CASUAL_TONE - Conversational, friendly style
-// - FORMAL_PROFESSIONAL - Business/professional tone
+// - DEFAULT - Universal rewrite preserving language
+// - CUSTOM - Placeholder for a custom prompt
 
 const results = await rewriter.rewrite(html, {
-  promptTemplate: "SEO_FOCUSED",
+  promptTemplate: "DEFAULT",
 });
 
 // Or use a custom prompt
@@ -213,7 +211,7 @@ console.log(`Estimated cost: $${estimatedCost.toFixed(4)}`);
 
 ```typescript
 const rewriter = new ContentRewriter({
-  provider: "openai",        // Required: "openai" | "anthropic" | "custom"
+  provider: "openai",        // Required: "openai" (only supported)
   apiKey: "sk-...",          // Required
   model: "gpt-4.1",          // Optional, default: "gpt-4.1"
   baseUrl: "...",            // Optional, for proxies
@@ -315,14 +313,11 @@ const results = await rewriter.rewrite(content);
 
 ## Pricing
 
-Cost is calculated based on OpenAI's token pricing:
+Cost is calculated based on OpenAI's token pricing (gpt-4.1 only):
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) |
 |-------|----------------------|------------------------|
 | gpt-4.1 | $5.00 | $15.00 |
-| gpt-4.1-mini | $0.40 | $1.60 |
-| gpt-4o | $2.50 | $10.00 |
-| gpt-4o-mini | $0.15 | $0.60 |
 
 ## Related
 
